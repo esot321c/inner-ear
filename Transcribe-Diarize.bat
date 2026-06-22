@@ -29,6 +29,7 @@ docker run --rm --gpus all ^
   -v "%ROOT%out:/out" ^
   -v "%ROOT%archive:/archive" ^
   -v "%ROOT%docker\nemo\diarize_transcribe.py:/work/diarize_transcribe.py" ^
+  -v "%ROOT%docker\nemo\pipeline.py:/work/pipeline.py" ^
   -v "nemo-cache:/root/.cache" ^
   nemo-sortformer
 

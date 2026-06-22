@@ -21,6 +21,9 @@ RUN python3 -c "from nemo.collections.asr.models import SortformerEncLabelModel;
 # Separate layer so the heavy NeMo layer stays cached.
 RUN python3 -m pip install faster-whisper
 
+# Web app (Gradio) + audio I/O. Separate layer again to keep NeMo/whisper cached.
+RUN python3 -m pip install gradio soundfile
+
 WORKDIR /work
-COPY sortformer_diar.py diarize_transcribe.py /work/
+COPY sortformer_diar.py diarize_transcribe.py pipeline.py app.py /work/
 ENTRYPOINT ["python3", "/work/diarize_transcribe.py"]
