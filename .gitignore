@@ -1,0 +1,32 @@
+# --- secrets (never commit) ---
+hf_token.txt
+
+# --- python environment / caches ---
+.venv/
+__pycache__/
+*.pyc
+
+# --- bundled binaries (large, machine-specific) ---
+bin/
+
+# --- data folders (your audio + transcripts, large/private) ---
+in/
+out/
+archive/
+scratch/
+
+# --- model caches ---
+*.cache/
+
+# --- logs and build artifacts ---
+*.log
+docker/nemo/audio.wav
+docker/nemo/out/
+
+# --- my throwaway scratch scripts ---
+_*.py
+
+# --- OS cruft ---
+Thumbs.db
+desktop.ini
+.DS_Store
