@@ -25,4 +25,4 @@ docker run --rm --gpus all -p 7860:7860 ^
   -v "%ROOT%docker\nemo\app.py:/work/app.py" ^
   -v "%ROOT%docker\nemo\pipeline.py:/work/pipeline.py" ^
   -v "nemo-cache:/root/.cache" ^
-  nemo-sortformer python3 /work/app.py
+  --entrypoint python3 nemo-sortformer /work/app.py

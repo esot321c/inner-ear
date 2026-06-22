@@ -6,6 +6,27 @@ Everything runs locally on your RTX 3070. Nothing is uploaded.
 Engine: Whisply -> faster-whisper (transcription) + WhisperX/pyannote (speakers).
 Model: large-v3-turbo (chosen to fit your 8GB card comfortably).
 
+************************************************************
+  RECOMMENDED: the Meeting Transcriber app
+************************************************************
+The best tool here is now the web app. Double-click:
+
+    Transcribe-App.bat
+
+It opens http://localhost:7860 in your browser. There you can:
+  - Upload a meeting (single mode) or process the whole in\ folder (batch).
+  - It transcribes (Whisper large-v3) + separates speakers (NeMo Sortformer).
+  - It plays a clip of each detected voice and lets you NAME them.
+  - Save -> labeled transcript in out\, source moved to archive\.
+
+Two-channel meetings (your mic + the call) are auto-detected and split, so
+your own voice is labeled perfectly and the far side is diarized.
+Best capture: OBS multi-track (Mic -> Track 1, Desktop -> Track 2).
+
+The folder-only tools below (Transcribe-Folder.bat etc.) still work, but the
+app is the one to use.
+
+
 ------------------------------------------------------------
 EVERYDAY USE  (folder -> folder)
 ------------------------------------------------------------
@@ -67,4 +88,18 @@ WHAT'S INSTALLED  (for reference / if something breaks)
 - ffmpeg/ffprobe:            bin
 - Settings:                  config.json
 - GPU: torch 2.8 + CUDA 12.8, ctranslate2 (faster-whisper backend)
+
+------------------------------------------------------------
+LICENSE & MODEL NOTES
+------------------------------------------------------------
+This project's CODE is MIT licensed (see LICENSE) - free to use, modify, and
+redistribute; keep the copyright notice.
+
+The AI MODELS it downloads at runtime have their OWN licenses, which you accept
+when you use them:
+  - OpenAI Whisper (large-v3): MIT
+  - NVIDIA NeMo Sortformer diarizer: NVIDIA model license - CHECK IT before any
+    commercial redistribution.
+  - pyannote (older whisply path only): MIT code, gated model terms.
+Your MIT code license does not override the model licenses.
 ============================================================

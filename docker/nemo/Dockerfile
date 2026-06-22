@@ -22,7 +22,12 @@ RUN python3 -c "from nemo.collections.asr.models import SortformerEncLabelModel;
 RUN python3 -m pip install faster-whisper
 
 # Web app (Gradio) + audio I/O. Separate layer again to keep NeMo/whisper cached.
-RUN python3 -m pip install gradio soundfile
+# Gradio pulls huggingface-hub>=1.0, but faster-whisper needs <1.0 - pin it back.
+RUN python3 -m pip install gradio soundfile && \
+    python3 -m pip install "huggingface-hub>=0.34.0,<1.0"
+
+# Verify the whole stack imports together (catches dep conflicts at build time).
+RUN python3 -c "import gradio, faster_whisper; from nemo.collections.asr.models import SortformerEncLabelModel; print('stack import OK')"
 
 WORKDIR /work
 COPY sortformer_diar.py diarize_transcribe.py pipeline.py app.py /work/
