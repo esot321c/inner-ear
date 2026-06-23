@@ -36,7 +36,7 @@ From this folder:
   docker compose run --rm transcribe
 
   # use the full (more accurate, heavier) model instead of turbo
-  $env:WHISPLY_MODEL = "large-v3"
+  $env:WHISPER_MODEL = "large-v3"
   docker compose run --rm transcribe
 
 ------------------------------------------------------------

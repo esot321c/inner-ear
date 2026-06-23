@@ -5,7 +5,7 @@ services:
     gpus: all
     environment:
       - HF_TOKEN=${HF_TOKEN:-}
-      - WHISPLY_MODEL=${WHISPLY_MODEL:-large-v3-turbo}
+      - WHISPER_MODEL=${WHISPER_MODEL:-large-v3-turbo}
     volumes:
       - ../in:/in            # drop audio here (host: Transcribe\in)
       - ../out:/out          # results land here (host: Transcribe\out)

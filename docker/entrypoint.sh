@@ -4,7 +4,7 @@ set -euo pipefail
 
 IN=/in
 OUT=/out
-MODEL="${WHISPLY_MODEL:-large-v3-turbo}"
+MODEL="${WHISPER_MODEL:-${WHISPLY_MODEL:-large-v3-turbo}}"  # WHISPLY_MODEL: legacy alias
 
 # Help ctranslate2 (faster-whisper) find torch's bundled cuDNN if the
 # system one isn't picked up.
