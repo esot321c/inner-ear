@@ -12,7 +12,9 @@ __pycache__/
 bin/
 
 # --- data folders (your audio + transcripts, large/private) ---
-in/
+# Keep the in/ folder in a fresh clone (drop audio here) but ignore its contents.
+in/*
+!in/.gitkeep
 out/
 archive/
 scratch/
