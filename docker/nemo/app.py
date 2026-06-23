@@ -110,9 +110,10 @@ def save_named(result, names, you_name):
 
 
 def build_ui():
-    with gr.Blocks(title="Meeting Transcriber") as demo:
-        gr.Markdown("# Meeting Transcriber\n"
-                    "Transcribe + diarize on your GPU, name the voices, save.")
+    with gr.Blocks(title="Inner Ear") as demo:
+        gr.Markdown("# Inner Ear\n"
+                    "Local meeting transcriber - transcribe + diarize on your "
+                    "GPU, name the voices, save.")
         with gr.Row():
             you_name = gr.Textbox("You", label="Your name (your own mic channel)")
             you_ch = gr.Radio(["0", "1"], value="0",

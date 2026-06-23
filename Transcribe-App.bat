@@ -1,5 +1,5 @@
 @echo off
-REM Double-click: starts the Meeting Transcriber web app and opens your browser.
+REM Double-click: starts the Inner Ear web app and opens your browser.
 REM Drop meeting files in in\ (or upload in the app). Output -> out\, source -> archive\.
 setlocal
 set "ROOT=%~dp0"
@@ -19,7 +19,7 @@ if exist "%ROOT%.env" set ENVOPT=--env-file "%ROOT%.env"
 
 start "" http://localhost:7860
 echo.
-echo Meeting Transcriber starting at http://localhost:7860
+echo Inner Ear starting at http://localhost:7860
 echo (Give it a few seconds. CLOSE THIS WINDOW to stop the app.)
 echo.
 docker run --rm --gpus all %ENVOPT% -p 7860:7860 ^

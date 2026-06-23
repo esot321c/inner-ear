@@ -1,8 +1,6 @@
-# Meeting Transcriber
+# Inner Ear
 
 > Local, GPU-accelerated meeting transcription with **accurate speaker separation** — even on a single mixed track with similar voices talking over each other. Nothing leaves your machine.
-
-*(Working title — rename to whatever you like.)*
 
 Transcribe a recording, see the voices it detected, **play a clip of each and name them**, and save a clean labeled transcript. Built for messy real-world audio: crosstalk, interruptions, multiple speakers.
 
