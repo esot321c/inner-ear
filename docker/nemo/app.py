@@ -15,6 +15,39 @@ MAX_SPK = 4  # Sortformer caps at 4 speakers
 EXTS = (".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wma",
         ".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v")
 
+# Processed results are persisted here, keyed by meeting, so that "Save
+# transcript" still works after the long processing gap - even if the Gradio
+# session's in-memory gr.State was evicted (idle/backgrounded tab dropping the
+# heartbeat) or the server was restarted. The browser keeps showing the result;
+# this is where the data it needs to actually save lives.
+CACHE = os.path.join(OUT, ".cache")
+
+
+def _cache_path(key):
+    safe = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in (key or ""))
+    return os.path.join(CACHE, safe + ".json")
+
+
+def store_result(key, res):
+    os.makedirs(CACHE, exist_ok=True)
+    with open(_cache_path(key), "w", encoding="utf-8") as fh:
+        json.dump(res, fh)
+
+
+def load_result(key):
+    path = _cache_path(key)
+    if key and os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    return None
+
+
+def drop_result(key):
+    try:
+        os.remove(_cache_path(key))
+    except OSError:
+        pass
+
 
 def process_file(path, you_ch):
     """Full pipeline on one file. Returns a result dict (pre-naming)."""
@@ -90,9 +123,12 @@ def build_ui():
                         file_count="single")
             go = gr.Button("Transcribe", variant="primary")
         with gr.Tab("Batch folder (in\\)"):
-            gr.Markdown("Process every file in **in\\**, then pick one to name.")
+            gr.Markdown("Transcribe **every** file in **in\\** on the GPU. When it "
+                        "finishes, open each meeting from the dropdown to name its "
+                        "speakers and save - one meeting at a time.")
             run = gr.Button("Process all in in\\", variant="primary")
-            picker = gr.Dropdown(label="Processed meetings", choices=[], visible=False)
+            picker = gr.Dropdown(label="Open a processed meeting to name + save",
+                                 choices=[], visible=False)
 
         status = gr.Markdown(visible=False)
         rows, clip_c, name_c, spk_c = [], [], [], []
@@ -105,8 +141,11 @@ def build_ui():
         save = gr.Button("Save transcript", variant="primary", visible=False)
         out_txt = gr.Textbox(label="Saved transcript", lines=20, visible=False)
 
-        current = gr.State()
-        batch_results = gr.State({})
+        # Hidden carrier for the meeting key. It's a real component value (lives
+        # in the browser DOM and is re-sent with the Save click), so it survives
+        # the long gap that wipes gr.State. on_save uses it to reload the result
+        # from disk - never trusting in-memory state to still be there.
+        save_key = gr.Textbox(visible=False)
 
         def rows_for(res):
             u = []
@@ -124,58 +163,110 @@ def build_ui():
         for i in range(MAX_SPK):
             row_outputs += [rows[i], clip_c[i], name_c[i], spk_c[i]]
 
+        def show(res, key, prefix=""):
+            """Common 'a meeting is loaded' UI update, plus the durable key."""
+            msg = f"{prefix}{res['mode']}, {len(res['speakers'])} other voice(s) detected."
+            return ([gr.update(value=msg, visible=True), gr.update(visible=True), key]
+                    + rows_for(res))
+
+        def show_none(msg):
+            return ([gr.update(value=msg, visible=True), gr.update(visible=False), ""]
+                    + rows_for({"speakers": [], "clips": {}}))
+
+        def busy(msg):
+            """A 'still working' status update that leaves the voice rows alone."""
+            return ([gr.update(value=msg, visible=True), gr.update(visible=False), ""]
+                    + [gr.update() for _ in row_outputs])
+
+        # outputs shared by the "show a meeting" handlers
+        show_outputs = [status, save, save_key] + row_outputs
+
+        GO_LABEL, RUN_LABEL = "Transcribe", "Process all in in\\"
+
+        def working(label):
+            """Disabled button showing a spinner + 'Working…' while a job runs."""
+            return gr.update(value=f"⏳ {label}…", interactive=False)
+
+        def idle(label):
+            return gr.update(value=label, interactive=True)
+
         def on_single(file, ych):
             if not file:
-                return [None, gr.update(value="Upload a file first.", visible=True),
-                        gr.update(visible=False)] + rows_for({"speakers": [], "clips": {}})
-            res = process_file(file.name, ych)
-            msg = f"Done - {res['mode']}, {len(res['speakers'])} other voice(s) detected."
-            return [res, gr.update(value=msg, visible=True),
-                    gr.update(visible=True)] + rows_for(res)
+                yield [gr.update()] + show_none("Upload a file first.")
+                return
+            key = os.path.basename(file.name)
+            yield [working("Transcribing")] + busy(
+                f"⏳ Transcribing **{key}** on the GPU. This takes a few "
+                "minutes - leave this tab open.")
+            try:
+                res = process_file(file.name, ych)
+                store_result(key, res)
+                yield [idle(GO_LABEL)] + show(res, key, "Done - ")
+            except Exception as e:
+                print("single failed", file.name, e)
+                yield [idle(GO_LABEL)] + show_none(f"Failed: {e}")
 
-        go.click(on_single, [up, you_ch],
-                 [current, status, save] + row_outputs)
+        go.click(on_single, [up, you_ch], [go] + show_outputs)
 
         def on_batch_run(ych):
             files = [f for f in sorted(glob.glob(os.path.join(IN, "*")))
                      if os.path.isfile(f) and f.lower().endswith(EXTS)]
-            done = {}
-            for f in files:
+            if not files:
+                yield (gr.update(), gr.update(choices=[], visible=False, value=None),
+                       gr.update(value="No audio/video files found in **in\\**.",
+                                 visible=True))
+                return
+            n = len(files)
+            yield (working("Processing"), gr.update(),
+                   gr.update(value=f"⏳ Processing {n} file(s) on the GPU. A few "
+                             "minutes each - leave this tab open.", visible=True))
+            done, errs = [], []
+            for idx, f in enumerate(files, 1):
+                key = os.path.basename(f)
+                yield (gr.update(), gr.update(),
+                       gr.update(value=f"⏳ Processing {idx}/{n}: **{key}** …",
+                                 visible=True))
                 try:
-                    done[os.path.basename(f)] = process_file(f, ych)
+                    store_result(key, process_file(f, ych))
+                    done.append(key)
                 except Exception as e:
+                    errs.append(f"{key}: {e}")
                     print("skip", f, e)
-            choices = list(done.keys())
-            return done, gr.update(choices=choices, visible=True,
-                                   value=choices[0] if choices else None)
+            msg = (f"✓ Processed {len(done)}/{n} file(s). Use the dropdown to open "
+                   "each meeting, name its speakers, and save.")
+            if errs:
+                msg += "  ⚠ Skipped: " + "; ".join(errs)
+            yield (idle(RUN_LABEL),
+                   gr.update(choices=done, visible=bool(done),
+                             value=done[0] if done else None),
+                   gr.update(value=msg, visible=True))
 
-        run.click(on_batch_run, [you_ch], [batch_results, picker])
+        run.click(on_batch_run, [you_ch], [run, picker, status])
 
-        def on_pick(name, results):
-            if not name or name not in results:
-                return [None, gr.update(visible=False),
-                        gr.update(visible=False)] + rows_for({"speakers": [], "clips": {}})
-            res = results[name]
-            msg = f"{name}: {res['mode']}, {len(res['speakers'])} other voice(s)."
-            return [res, gr.update(value=msg, visible=True),
-                    gr.update(visible=True)] + rows_for(res)
-
-        picker.change(on_pick, [picker, batch_results],
-                      [current, status, save] + row_outputs)
-
-        def on_save(res, yname, *vals):
+        def on_pick(name):
+            res = load_result(name)
             if not res:
-                return gr.update(value="Nothing to save yet.", visible=True)
-            names = {}
+                return show_none("That meeting's data is no longer available - reprocess it.")
+            return show(res, name, f"{name}: ")
+
+        picker.change(on_pick, [picker], show_outputs)
+
+        def on_save(key, yname, *name_vals):
+            res = load_result(key)
+            if not res:
+                return gr.update(
+                    value="Nothing to save - the meeting data expired. Re-run processing.",
+                    visible=True)
+            names, speakers = {}, res["speakers"]
             for i in range(MAX_SPK):
-                nm = vals[i]
-                spk = vals[MAX_SPK + i]
-                if spk and nm and nm.strip():
-                    names[spk] = nm.strip()
+                nm = name_vals[i]
+                if i < len(speakers) and nm and nm.strip():
+                    names[speakers[i]] = nm.strip()
             txt = save_named(res, names, yname)
+            drop_result(key)
             return gr.update(value=txt, visible=True)
 
-        save.click(on_save, [current, you_name] + name_c + spk_c, [out_txt])
+        save.click(on_save, [save_key, you_name] + name_c, [out_txt])
     return demo
 
 
