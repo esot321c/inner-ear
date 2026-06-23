@@ -13,12 +13,16 @@ if errorlevel 1 (
   docker build -t nemo-sortformer "%ROOT%docker\nemo"
 )
 
+REM Optional config from .env (HF_TOKEN, WHISPER_MODEL, ...). App needs none.
+set "ENVOPT="
+if exist "%ROOT%.env" set ENVOPT=--env-file "%ROOT%.env"
+
 start "" http://localhost:7860
 echo.
 echo Meeting Transcriber starting at http://localhost:7860
 echo (Give it a few seconds. CLOSE THIS WINDOW to stop the app.)
 echo.
-docker run --rm --gpus all -p 7860:7860 ^
+docker run --rm --gpus all %ENVOPT% -p 7860:7860 ^
   -v "%ROOT%in:/in" ^
   -v "%ROOT%out:/out" ^
   -v "%ROOT%archive:/archive" ^

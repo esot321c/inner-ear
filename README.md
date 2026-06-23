@@ -44,6 +44,24 @@ Most "Whisper + diarization" setups use **pyannote**, which collapses similar-so
 
 **Best capture (recommended):** OBS multi-track — **Mic → Track 1**, **Desktop audio → Track 2** (Settings → Output → Recording). Recorded as separate tracks in one MKV; the pipeline pulls each independently. A stereo file (you = left, call = right) also works. A single mixed track is diarized as-is.
 
+## Configuration
+
+Copy `.env.example` to `.env` (gitignored) for optional settings:
+
+```bash
+cp .env.example .env      # Windows: copy .env.example .env
+```
+
+- **The main app needs no configuration and no token** — Whisper and NeMo
+  Sortformer are open models.
+- `HF_TOKEN` in `.env` is **only** needed for the legacy pyannote launchers
+  (`Transcribe-Folder.bat` / `Transcribe-Docker.bat`). Get a free token at
+  [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) and
+  accept the terms for
+  [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
+  and [segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0).
+- Optional app settings: `WHISPER_MODEL`, `YOU_NAME`, `YOU_CH` (see `.env.example`).
+
 ## How it works
 
 ```

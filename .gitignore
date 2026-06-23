@@ -1,5 +1,7 @@
-# --- secrets (never commit) ---
+# --- secrets / local config (never commit) ---
+.env
 hf_token.txt
+# (.env.example IS committed as the template)
 
 # --- python environment / caches ---
 .venv/

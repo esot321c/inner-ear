@@ -23,7 +23,9 @@ echo.
 echo Transcribing + diarizing everything in in\  (GPU: large-v3 + Sortformer)...
 echo This is slow on purpose - large-v3 for accuracy. A 1-hour file takes a while.
 echo.
-docker run --rm --gpus all ^
+set "ENVOPT="
+if exist "%ROOT%.env" set ENVOPT=--env-file "%ROOT%.env"
+docker run --rm --gpus all %ENVOPT% ^
   -e STAMP=%STAMP% ^
   -v "%ROOT%in:/in" ^
   -v "%ROOT%out:/out" ^

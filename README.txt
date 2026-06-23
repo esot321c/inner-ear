@@ -61,10 +61,11 @@ no "who said what".
         https://huggingface.co/pyannote/segmentation-3.0
   3. Create a token (type: Read):
         https://huggingface.co/settings/tokens
-  4. Open the file   hf_token.txt   in this folder, paste the
-     token as the ONLY thing in the file, and save.
+  4. Copy   .env.example   to   .env   and set   HF_TOKEN=<your token>
+     (the old hf_token.txt still works as a fallback).
 
 That's it. Run Transcribe-Folder.bat again and speakers will be labelled.
+NOTE: the new app (Transcribe-App.bat) needs NO token at all.
 
 ------------------------------------------------------------
 NOTES

@@ -31,13 +31,19 @@ if (-not $files) {
     Read-Host "Press Enter to close"; exit 0
 }
 
-# Speaker diarization needs a HuggingFace token.
+# Speaker diarization (pyannote, legacy path) needs a HuggingFace token.
+# Read from .env (HF_TOKEN=...), falling back to the old hf_token.txt.
 $token = ""
-if (Test-Path $tokenFile) { $token = (Get-Content $tokenFile -Raw).Trim() }
+$envFile = "$root\.env"
+if (Test-Path $envFile) {
+    $line = (Get-Content $envFile | Where-Object { $_ -match '^\s*HF_TOKEN\s*=' } | Select-Object -First 1)
+    if ($line) { $token = ($line -replace '^\s*HF_TOKEN\s*=', '').Trim().Trim('"') }
+}
+if (-not $token -and (Test-Path $tokenFile)) { $token = (Get-Content $tokenFile -Raw).Trim() }
 if (-not $token) {
-    Write-Host "No HuggingFace token found at $tokenFile" -ForegroundColor Red
-    Write-Host "Speaker labels need one (free). See README.txt -> 'Speaker labels setup'." -ForegroundColor Red
-    Write-Host "Paste your token into hf_token.txt, then run this again." -ForegroundColor Red
+    Write-Host "No HuggingFace token found." -ForegroundColor Red
+    Write-Host "Copy .env.example to .env and set HF_TOKEN=... (see README)." -ForegroundColor Red
+    Write-Host "(Only the legacy pyannote path needs this - the app needs no token.)" -ForegroundColor Red
     Read-Host "Press Enter to close"; exit 1
 }
 
