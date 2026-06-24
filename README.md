@@ -13,8 +13,9 @@ Most "Whisper + diarization" setups use **pyannote**, which collapses similar-so
 ## What it does
 
 - **Transcribes** with OpenAI Whisper `large-v3` (via faster-whisper) — accurate, captures fast/quiet speech.
+- **Skips silence** (voice-activity detection), so dead air isn't transcribed as filler or hallucinated text.
 - **Separates speakers** with NeMo streaming Sortformer — handles long files within 8 GB VRAM.
-- **Sentence-level smoothing** so boundary words don't hang off the wrong speaker.
+- **Light jitter cleanup** snaps isolated mis-tagged words back to the right speaker, without flattening fast back-and-forth.
 - **Two-channel meetings** (your mic + the call) are auto-detected and split: your channel is labeled as you; the far side (which may have several people) is diarized.
 - **Naming UI** — plays a sample clip of each detected voice so you can name them.
 - **Single** (interactive) and **batch** (whole-folder) modes.
