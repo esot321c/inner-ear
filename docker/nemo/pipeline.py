@@ -186,6 +186,124 @@ def diarize(dm, wav):
     return out
 
 
+FRAME_DUR = 0.08  # Sortformer posterior frame = window_stride(0.01) * subsampling(8)
+
+
+def diarize_soft(dm, wav):
+    """Sortformer's frame-level soft posteriors instead of hard segments.
+    Returns (post, frame_dur): post is a [frames, n_spk] array of per-speaker
+    probabilities in [0,1] (independent sigmoids - they can both be high during
+    overlap). This is the 'ramp' the hard-segment path threw away."""
+    import numpy as np
+    _segs, tensors = dm.diarize(audio=[wav], batch_size=1, include_tensor_outputs=True)
+    arr = tensors[0]
+    arr = arr.detach().cpu().numpy() if hasattr(arr, "detach") else np.asarray(arr)
+    if arr.ndim == 3:
+        arr = arr[0]
+    return arr, FRAME_DUR
+
+
+def words_speaker_probs(words, post, frame_dur, n_spk=4):
+    """Attach to each word a normalised per-speaker probability vector, averaged
+    over the posterior frames spanning the word. This is the Viterbi emission."""
+    T = post.shape[0]
+    for w in words:
+        a = max(0, min(int(w["start"] / frame_dur), T - 1))
+        b = max(a + 1, min(int(round(w["end"] / frame_dur)), T))
+        m = post[a:b].mean(axis=0)
+        tot = float(m.sum()) or 1.0
+        w["speaker_probs"] = [float(m[s] / tot) if s < len(m) else 0.0
+                              for s in range(n_spk)]
+
+
+def group_sentences(words, max_gap=0.6):
+    """Tag each word with sent_id and sent_start. A sentence ends on .?! OR a
+    pause longer than max_gap (Whisper emits long unpunctuated runs, so pauses
+    are the reliable boundary). The resolver lets speaker switch cheaply at a
+    sentence start and dearly mid-sentence."""
+    sid = 0
+    for i, w in enumerate(words):
+        if i == 0:
+            start = True
+        else:
+            prev = words[i - 1]
+            tail = prev["word"].strip()
+            start = (bool(tail) and tail[-1] in ".?!") or (w["start"] - prev["end"] > max_gap)
+        if start:
+            sid += 1
+        w["sent_start"] = start
+        w["sent_id"] = sid
+
+
+def resolve_speakers(words, n_spk=4, switch_mid=3.0, switch_boundary=0.4, eps=1e-6):
+    """Sentence-aware Viterbi over words. Emission = log soft-posterior per
+    speaker; switching speaker costs `switch_mid` within a sentence but only
+    `switch_boundary` at a sentence start. Net effect:
+      - trailing off (mid-sentence, prior speaker still has signal) -> stays
+      - new-speaker onset (sentence start, posterior crossed) -> switches
+      - real interjection (posterior flips hard) -> emission beats the penalty
+    Sets each word's 'speaker'. Operates only on speaker_probs + sent_start, so
+    it is pure-Python and unit-testable without a GPU."""
+    import math
+    if not words:
+        return
+    S = list(range(n_spk))
+
+    def emit(w, s):
+        p = w.get("speaker_probs") or []
+        return math.log((p[s] if s < len(p) else 0.0) + eps)
+
+    dp = [emit(words[0], s) for s in S]
+    back = [[0] * n_spk for _ in range(len(words))]
+    for i in range(1, len(words)):
+        pen = switch_boundary if words[i].get("sent_start") else switch_mid
+        ndp = [-math.inf] * n_spk
+        for s in S:
+            e = emit(words[i], s)
+            best, bs = -math.inf, 0
+            for ps in S:
+                sc = dp[ps] + (0.0 if ps == s else -pen) + e
+                if sc > best:
+                    best, bs = sc, ps
+            ndp[s], back[i][s] = best, bs
+        dp = ndp
+    last = max(S, key=lambda s: dp[s])
+    path = [last] * len(words)
+    for i in range(len(words) - 1, 0, -1):
+        path[i - 1] = back[i][path[i]]
+    for w, s in zip(words, path):
+        w["speaker"] = f"speaker_{s}"
+
+
+# Sentence-opener words: these almost always START an utterance, so when one is
+# stranded at the end of a turn (its sound landed in the previous speaker via a
+# word-timing quirk) it really belongs to the next, different speaker's turn.
+ONSET_WORDS = {"how", "what", "why", "when", "where", "who", "which",
+               "did", "do", "does", "is", "are", "was", "were",
+               "can", "could", "would", "should", "i", "you"}
+
+
+def fix_onset_leaks(words):
+    """Final correction pass. Runs after resolve_speakers, with every prior
+    signal available. Moves a turn-final sentence-opener word onto the following
+    turn when that turn is a different speaker - this is the 'did you / how much'
+    leak, where the word's text opens the next person's sentence but its audio
+    glued to the previous turn. A lone opener that is its own one-word turn (a
+    real interjection like 'what?') is left untouched, because its neighbours on
+    BOTH sides are the other speaker."""
+    n = len(words)
+    for i in range(n - 1):
+        w, nxt = words[i], words[i + 1]
+        if w["speaker"] == nxt["speaker"]:
+            continue                      # not a turn boundary
+        prev_same = (i == 0) or words[i - 1]["speaker"] == w["speaker"]
+        if not prev_same:
+            continue                      # w is its own turn (interjection) - keep
+        tok = w["word"].strip().lower().strip(".,!?")
+        if tok in ONSET_WORDS:
+            w["speaker"] = nxt["speaker"]
+
+
 def extract_clip(src_wav, start, end, dst, pad=0.0):
     _extract(src_wav, ["-ss", str(max(0, start - pad)), "-to", str(end + pad)], dst)
     return dst

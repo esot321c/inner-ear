@@ -2,7 +2,12 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from pipeline import (decide_mode, assign_speakers, smooth_sentences, build_turns,
-                      render, pick_sample_turns, display_name)
+                      render, pick_sample_turns, display_name,
+                      group_sentences, resolve_speakers, fix_onset_leaks)
+
+
+def _wp(probs, sent_start=False):
+    return {"speaker_probs": probs, "sent_start": sent_start}
 
 
 def _w(start, end, word, speaker=None):
@@ -91,3 +96,65 @@ def test_pick_sample_turns_skips_you():
              {"speaker": "A", "start": 5, "end": 7, "text": "them"}]
     picks = pick_sample_turns(turns)
     assert "__you__" not in picks and "A" in picks
+
+
+# --- soft-posterior resolver pipeline ---
+def test_group_sentences_breaks_on_punctuation_and_pause():
+    words = [_w(0.0, 0.5, " Hi."), _w(0.6, 1.0, " There"), _w(3.0, 3.5, " Later")]
+    group_sentences(words)
+    assert [w["sent_id"] for w in words] == [1, 2, 3]
+    assert all(w["sent_start"] for w in words)
+
+def test_group_sentences_keeps_unpunctuated_run_together():
+    words = [_w(0.0, 0.4, " hey"), _w(0.4, 0.8, " there"), _w(0.8, 1.2, " you")]
+    group_sentences(words)
+    assert [w["sent_id"] for w in words] == [1, 1, 1]
+
+def test_resolve_follows_posteriors():
+    words = [_wp([0.9, 0.1], True), _wp([0.1, 0.9], True)]
+    resolve_speakers(words, n_spk=2)
+    assert [w["speaker"] for w in words] == ["speaker_0", "speaker_1"]
+
+def test_resolve_keeps_speaker_through_weak_midsentence_dip():
+    # a brief weak dip toward spk1 mid-sentence must not flip the speaker
+    words = [_wp([0.9, 0.1], True), _wp([0.45, 0.55], False), _wp([0.9, 0.1], False)]
+    resolve_speakers(words, n_spk=2, switch_mid=3.0, switch_boundary=0.4)
+    assert [w["speaker"] for w in words] == ["speaker_0"] * 3
+
+def test_resolve_switches_for_interjection_at_sentence_start():
+    # a real interjection begins its own sentence (pause before it); the cheap
+    # sentence-boundary switch lets a strong posterior flip it
+    words = [_wp([0.95, 0.05], True), _wp([0.02, 0.98], True), _wp([0.95, 0.05], True)]
+    resolve_speakers(words, n_spk=2, switch_mid=3.0, switch_boundary=0.4)
+    assert words[1]["speaker"] == "speaker_1"
+
+def test_resolve_does_not_fragment_on_midsentence_blip():
+    # a strong but isolated MID-sentence frame stays with the turn's speaker -
+    # this is what stops fast crosstalk (the podcast) from fragmenting
+    words = [_wp([0.95, 0.05], True), _wp([0.05, 0.95], False), _wp([0.95, 0.05], False)]
+    resolve_speakers(words, n_spk=2, switch_mid=3.0, switch_boundary=0.4)
+    assert [w["speaker"] for w in words] == ["speaker_0"] * 3
+
+def test_fix_onset_moves_trailing_opener_to_next_speaker():
+    words = [{"word": " make", "speaker": "speaker_0"},
+             {"word": " sense", "speaker": "speaker_0"},
+             {"word": " did", "speaker": "speaker_0"},   # stranded opener
+             {"word": " you", "speaker": "speaker_1"},
+             {"word": " send", "speaker": "speaker_1"}]
+    fix_onset_leaks(words)
+    assert words[2]["speaker"] == "speaker_1"   # "did" moved to Graham
+    assert words[1]["speaker"] == "speaker_0"   # "sense" stays
+
+def test_fix_onset_keeps_lone_interjection():
+    words = [{"word": " much", "speaker": "speaker_1"},
+             {"word": " what", "speaker": "speaker_0"},   # its own one-word turn
+             {"word": " how", "speaker": "speaker_1"}]
+    fix_onset_leaks(words)
+    assert words[1]["speaker"] == "speaker_0"
+
+def test_fix_onset_leaves_turn_initial_opener():
+    words = [{"word": " okay", "speaker": "speaker_0"},
+             {"word": " i", "speaker": "speaker_1"},      # starts speaker_1's turn
+             {"word": " get", "speaker": "speaker_1"}]
+    fix_onset_leaks(words)
+    assert words[1]["speaker"] == "speaker_1"

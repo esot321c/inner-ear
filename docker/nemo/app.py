@@ -70,8 +70,16 @@ def process_file(path, you_ch):
                 w["speaker"] = "__you__"
         else:
             diar_wav = wav
-            P.assign_speakers(ws, P.diarize(dm, wav))
-            P.smooth_sentences(ws)
+            try:
+                post, fd = P.diarize_soft(dm, wav)        # soft per-speaker posteriors
+                P.words_speaker_probs(ws, post, fd)       # -> per-word probabilities
+                P.group_sentences(ws)                     # grammar for the resolver
+                P.resolve_speakers(ws)                    # sentence-aware Viterbi
+                P.fix_onset_leaks(ws)                     # final pass: move stranded openers
+            except Exception as e:  # posteriors unavailable -> hard-segment fallback
+                print("soft diarization failed, falling back to hard segments:", e)
+                P.assign_speakers(ws, P.diarize(dm, wav))
+                P.smooth_sentences(ws)
         allw.extend(ws)
     del dm
     torch.cuda.empty_cache()
