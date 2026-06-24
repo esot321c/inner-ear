@@ -31,12 +31,31 @@ def test_assign_speakers_by_midpoint():
     assert words[0]["speaker"] == "speaker_0"
     assert words[1]["speaker"] == "speaker_1"
 
-def test_smooth_moves_boundary_word_to_sentence_majority():
-    words = [_w(0.0, 0.2, " Was", "speaker_0"),
-             _w(0.2, 0.6, " it", "speaker_1"),
-             _w(0.6, 1.4, " good?", "speaker_1")]
+def test_smooth_despeckles_isolated_blip():
+    # A lone short word tagged speaker_1 between speaker_0 neighbours, no pauses:
+    # diarizer jitter -> snap it back to speaker_0.
+    words = [_w(0.0, 0.5, " hello there", "speaker_0"),
+             _w(0.5, 0.7, " um", "speaker_1"),       # 0.2s, no gaps
+             _w(0.7, 1.2, " how are you", "speaker_0")]
     smooth_sentences(words)
-    assert [w["speaker"] for w in words] == ["speaker_1"] * 3
+    assert [w["speaker"] for w in words] == ["speaker_0"] * 3
+
+def test_smooth_preserves_rapid_back_and_forth():
+    # Real (not blip-length) alternating turns must NOT be flattened to one
+    # speaker - this is the fast-conversation case that dominance-smoothing broke.
+    words = [_w(0.0, 1.0, " long thing from me", "speaker_0"),
+             _w(1.0, 2.0, " a real reply", "speaker_1"),
+             _w(2.0, 3.0, " back to me now", "speaker_0")]
+    smooth_sentences(words)
+    assert [w["speaker"] for w in words] == ["speaker_0", "speaker_1", "speaker_0"]
+
+def test_smooth_keeps_short_word_with_a_real_pause():
+    # A short word IS its own turn when separated by a pause - don't despeckle it.
+    words = [_w(0.0, 1.0, " talking here", "speaker_0"),
+             _w(2.0, 2.3, " yeah", "speaker_1"),      # 1s pause before it
+             _w(3.5, 4.5, " continuing on", "speaker_0")]
+    smooth_sentences(words)
+    assert words[1]["speaker"] == "speaker_1"
 
 def test_build_turns_groups_consecutive():
     words = [_w(0.0, 1.0, " Hi", "A"), _w(1.0, 2.0, " there", "A"),

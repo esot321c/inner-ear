@@ -39,24 +39,23 @@ def assign_speakers(words, dsegs):
         w["speaker"] = spk_at((w["start"] + w["end"]) / 2)
 
 
-def smooth_sentences(words):
-    """Reassign each sentence to its dominant (by duration) speaker, so boundary
-    words stop hanging off the previous turn."""
-    sent, cur = [], []
-    for w in words:
-        cur.append(w)
-        t = w["word"].strip()
-        if t and t[-1] in ".?!":
-            sent.append(cur); cur = []
-    if cur:
-        sent.append(cur)
-    for s in sent:
-        dur = defaultdict(float)
-        for w in s:
-            dur[w["speaker"]] += w["end"] - w["start"]
-        dom = max(dur, key=dur.get)
-        for w in s:
-            w["speaker"] = dom
+def smooth_sentences(words, max_blip_dur=0.4, max_blip_gap=0.4):
+    """Remove isolated single-word speaker 'blips' - a lone, short word tagged as
+    a different speaker than BOTH its neighbours, with no real pause around it.
+    That pattern is almost always diarizer jitter, not a real one-word turn.
+
+    Crucially this does NOT reassign whole sentences to a 'dominant' speaker. The
+    diarizer is good; in fast, interrupt-heavy conversation each ~few-second span
+    genuinely contains both people, and forcing the span to one speaker flattens
+    real back-and-forth (five turns become one). Trust the per-word diarization;
+    only clean obvious sub-word-scale noise."""
+    orig = [w["speaker"] for w in words]
+    for i in range(1, len(words) - 1):
+        if orig[i - 1] == orig[i + 1] != orig[i] \
+                and (words[i]["end"] - words[i]["start"]) <= max_blip_dur \
+                and (words[i]["start"] - words[i - 1]["end"]) <= max_blip_gap \
+                and (words[i + 1]["start"] - words[i]["end"]) <= max_blip_gap:
+            words[i]["speaker"] = orig[i - 1]
 
 
 def build_turns(words):
@@ -156,8 +155,13 @@ def load_whisper(model_name="large-v3", compute_type="float16"):
                         compute_type=compute_type if dev == "cuda" else "int8")
 
 
-def transcribe(wm, wav, vad_filter=False):
-    segs, info = wm.transcribe(wav, word_timestamps=True, vad_filter=vad_filter, beam_size=5)
+def transcribe(wm, wav, vad_filter=True):
+    # VAD on by default: skip silence so Whisper doesn't hallucinate ("Thank
+    # you." loops) over dead air, which also poisons diarization by inventing a
+    # speaker for the silent stretch. condition_on_previous_text off stops a
+    # stray hallucination from snowballing into a repeat loop.
+    segs, info = wm.transcribe(wav, word_timestamps=True, vad_filter=vad_filter,
+                               condition_on_previous_text=False, beam_size=5)
     return [{"start": w.start, "end": w.end, "word": w.word}
             for s in segs for w in (s.words or [])]
 
