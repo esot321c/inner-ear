@@ -11,10 +11,14 @@ All notable changes to Inner Ear are documented here.
 - **Silence transcribed as "Thank you." loops.** Voice-activity detection is on, so
   trailing dead air is skipped instead of hallucinated — which also stops it from
   poisoning diarization by inventing a speaker for the silence.
-- **Rapid conversations flattened onto one speaker.** Replaced the
-  reassign-each-sentence-to-its-loudest-speaker smoothing (which erased real
-  interrupt-heavy back-and-forth) with a conservative despeckle that only fixes
-  isolated single-word jitter.
+- **Speaker attribution rebuilt to work across meeting types.** The old step
+  reassigned each sentence to its loudest speaker, which flattened rapid
+  interrupt-heavy talk. Attribution now uses Sortformer's soft per-speaker
+  posteriors with a sentence-aware Viterbi resolver plus a grammar-based
+  onset-leak fix ("did you", "how much" no longer stick to the wrong person).
+  It handles both a rapid two-person mono call and 4-speaker crosstalk -
+  verified turn-for-turn against real ground truth. (A lightweight despeckle
+  remains as a fallback when soft posteriors aren't available.)
 - **Giant voice-naming clips.** Each voice's sample is now a short (~12 s) slice
   instead of the speaker's entire longest turn.
 
