@@ -21,6 +21,9 @@ RUN python3 -c "from nemo.collections.asr.models import SortformerEncLabelModel;
 # Separate layer so the heavy NeMo layer stays cached.
 RUN python3 -m pip install faster-whisper
 
+# Punctuation + truecasing restoration (Whisper leaves fast speech unpunctuated).
+RUN python3 -m pip install deepmultilingualpunctuation
+
 # Web app (Gradio) + audio I/O. Separate layer again to keep NeMo/whisper cached.
 # Gradio pulls huggingface-hub>=1.0, but faster-whisper needs <1.0 - pin it back.
 RUN python3 -m pip install gradio soundfile && \

@@ -304,6 +304,52 @@ def fix_onset_leaks(words):
             w["speaker"] = nxt["speaker"]
 
 
+# --------------------------- punctuation + truecasing ---------------------------
+
+def load_punctuator():
+    from deepmultilingualpunctuation import PunctuationModel
+    return PunctuationModel()
+
+
+_PUNCT_LABELS = {".": ".", ",": ",", "?": "?", ":": ":"}
+
+
+def restore_punctuation(words, pm):
+    """Add sentence punctuation and capitalisation to a flat word list. Whisper
+    leaves fast/overlapping speech as an unpunctuated lowercase run; this makes
+    it readable AND gives group_sentences real sentence boundaries. Each word
+    keeps its leading space; punctuation is appended, then sentence starts and
+    'I' are capitalised."""
+    if not words:
+        return
+    toks = [w["word"].strip() for w in words]
+    labels = pm.predict(toks)
+    for w, lab in zip(words, labels):
+        mark = _PUNCT_LABELS.get(lab[1] if len(lab) > 1 else "0", "")
+        lead = " " if w["word"][:1] == " " else ""
+        tok = w["word"].strip()
+        if mark and tok[-1:] not in ".,?!:":
+            tok += mark
+        w["word"] = lead + tok
+    _truecase(words)
+
+
+def _truecase(words):
+    cap_next = True
+    for w in words:
+        lead = " " if w["word"][:1] == " " else ""
+        tok = w["word"].strip()
+        if not tok:
+            continue
+        if cap_next and tok[0].isalpha():
+            tok = tok[0].upper() + tok[1:]
+        low = tok.lower()
+        if low == "i" or low[:2] == "i'":          # standalone I, I'm, I'll, ...
+            tok = "I" + tok[1:]
+        w["word"] = lead + tok
+        cap_next = tok[-1:] in ".?!"
+
+
 def extract_clip(src_wav, start, end, dst, pad=0.0):
     _extract(src_wav, ["-ss", str(max(0, start - pad)), "-to", str(end + pad)], dst)
     return dst

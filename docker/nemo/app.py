@@ -61,6 +61,15 @@ def process_file(path, you_ch):
     del wm
     torch.cuda.empty_cache()
 
+    try:  # punctuation + capitalisation (also gives the resolver sentence breaks)
+        pm = P.load_punctuator()
+        for ws in words.values():
+            P.restore_punctuation(ws, pm)
+        del pm
+        torch.cuda.empty_cache()
+    except Exception as e:
+        print("punctuation restoration skipped:", e)
+
     dm = P.load_diarizer(os.environ.get("DIAR_MODEL", "nvidia/diar_streaming_sortformer_4spk-v2"))
     allw, diar_wav = [], None
     for role, wav in jobs:

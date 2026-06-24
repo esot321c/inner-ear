@@ -158,3 +158,9 @@ def test_fix_onset_leaves_turn_initial_opener():
              {"word": " get", "speaker": "speaker_1"}]
     fix_onset_leaks(words)
     assert words[1]["speaker"] == "speaker_1"
+
+def test_truecase_capitalizes_sentence_starts_and_I():
+    from pipeline import _truecase
+    words = [{"word": " hello."}, {"word": " i"}, {"word": " said"}, {"word": " yes."}]
+    _truecase(words)
+    assert [w["word"] for w in words] == [" Hello.", " I", " said", " yes."]
