@@ -12,6 +12,7 @@ import pipeline as P
 
 IN, OUT, ARCHIVE = "/in", "/out", "/archive"
 MAX_SPK = 4  # Sortformer caps at 4 speakers
+SAMPLE_SECS = 12  # length of each voice's naming clip (a short, recognizable sample)
 EXTS = (".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wma",
         ".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v")
 
@@ -60,6 +61,15 @@ def process_file(path, you_ch):
     del wm
     torch.cuda.empty_cache()
 
+    try:  # punctuation + capitalisation (also gives the resolver sentence breaks)
+        pm = P.load_punctuator()
+        for ws in words.values():
+            P.restore_punctuation(ws, pm)
+        del pm
+        torch.cuda.empty_cache()
+    except Exception as e:
+        print("punctuation restoration skipped:", e)
+
     dm = P.load_diarizer(os.environ.get("DIAR_MODEL", "nvidia/diar_streaming_sortformer_4spk-v2"))
     allw, diar_wav = [], None
     for role, wav in jobs:
@@ -69,8 +79,16 @@ def process_file(path, you_ch):
                 w["speaker"] = "__you__"
         else:
             diar_wav = wav
-            P.assign_speakers(ws, P.diarize(dm, wav))
-            P.smooth_sentences(ws)
+            try:
+                post, fd = P.diarize_soft(dm, wav)        # soft per-speaker posteriors
+                P.words_speaker_probs(ws, post, fd)       # -> per-word probabilities
+                P.group_sentences(ws)                     # grammar for the resolver
+                P.resolve_speakers(ws)                    # sentence-aware Viterbi
+                P.fix_onset_leaks(ws)                     # final pass: move stranded openers
+            except Exception as e:  # posteriors unavailable -> hard-segment fallback
+                print("soft diarization failed, falling back to hard segments:", e)
+                P.assign_speakers(ws, P.diarize(dm, wav))
+                P.smooth_sentences(ws)
         allw.extend(ws)
     del dm
     torch.cuda.empty_cache()
@@ -82,7 +100,11 @@ def process_file(path, you_ch):
     clips = {}
     for spk, t in samples.items():
         dst = os.path.join(clip_dir, f"{spk}.wav")
-        clips[spk] = P.extract_clip(diar_wav, t["start"], t["end"], dst)
+        s, e = t["start"], t["end"]
+        if e - s > SAMPLE_SECS:  # a short slice from the middle, not the whole turn
+            mid = (s + e) / 2
+            s, e = mid - SAMPLE_SECS / 2, mid + SAMPLE_SECS / 2
+        clips[spk] = P.extract_clip(diar_wav, s, e, dst)
     return {"path": path, "mode": mode_label, "turns": turns,
             "speakers": sorted(samples.keys()), "clips": clips,
             "tmp": tmp, "clip_dir": clip_dir}
