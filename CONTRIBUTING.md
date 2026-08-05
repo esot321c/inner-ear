@@ -10,14 +10,14 @@ Thanks for your interest! This is a local, GPU-based meeting transcriber. Contri
 
 ## Dev setup
 
-You need an NVIDIA GPU (≥8 GB), Docker with GPU support, and Python 3.10–3.12 for running the unit tests.
+The app runs in Docker only — there is no host-Python path for it. You need an NVIDIA GPU (≥8 GB) and Docker with GPU support to run it, plus Python 3.10–3.12 on the host if you want to run the unit tests.
 
 ```bash
 git clone <your-fork>
-cd <repo>
+cd <repo>/docker
 
-# build the image (engine + app)
-docker build -t nemo-sortformer docker/nemo
+# build + run the app -> http://localhost:7860
+docker compose up
 ```
 
 For unit tests you only need a plain Python env (no GPU, no NeMo):
@@ -34,9 +34,9 @@ python -m pytest docker/nemo/tests -v
   - *Pure* (stdlib-only, unit-tested): `decide_mode`, `assign_speakers`, `smooth_sentences`, `build_turns`, `render`, `pick_sample_turns`, `display_name`.
   - *Model/IO* (lazy-import torch/faster-whisper/NeMo inside the body): `plan_channels`, `transcribe`, `diarize`, `extract_clip`.
 - **`docker/nemo/app.py`** — Gradio UI. Calls `pipeline.py` only; no logic of its own beyond wiring.
-- **`docker/nemo/diarize_transcribe.py`** — headless batch CLI. Also calls `pipeline.py`.
+- **`docker/nemo/stagebench_app.py`** — experiment bench (run stages, label ground truth, score runs). Also calls `pipeline.py`.
 
-If you add logic, put it in `pipeline.py` and write a test. The app and CLI both benefit.
+If you add logic, put it in `pipeline.py` and write a test. The app and the bench both benefit.
 
 ## Testing changes
 

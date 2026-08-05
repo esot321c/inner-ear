@@ -1,16 +1,37 @@
+# Inner Ear — local meeting transcriber.
+#   docker compose up                        -> production UI at http://localhost:7860
+#   docker compose --profile bench up bench  -> experiment stage bench at :7861
+# Models download on first run into the persistent `model-cache` volume.
+x-common: &common
+  build: ./nemo
+  image: inner-ear:latest
+  gpus: all
+  environment:
+    - WHISPER_MODEL=${WHISPER_MODEL:-large-v3}
+    - DICOW_MIN_SPK=${DICOW_MIN_SPK:-3}     # auto-escalate to DiCoW at this many speakers
+    - HF_TOKEN=${HF_TOKEN:-}                # only needed for the pyannote research backend
+    - LLM_BASE_URL=${LLM_BASE_URL:-}        # optional OpenAI-compatible endpoint for boundary cleanup
+    - LLM_MODEL=${LLM_MODEL:-qwen2.5:7b}
+  volumes:
+    - ../in:/in                # drop audio/video here
+    - ../out:/out              # transcripts + caches land here
+    - ../archive:/archive      # processed sources
+    - model-cache:/root/.cache # Whisper / Sortformer / DiCoW weights persist here
+
 services:
-  transcribe:
-    build: .
-    image: morley-transcribe:latest
-    gpus: all
-    environment:
-      - HF_TOKEN=${HF_TOKEN:-}
-      - WHISPER_MODEL=${WHISPER_MODEL:-large-v3-turbo}
-    volumes:
-      - ../in:/in            # drop audio here (host: Transcribe\in)
-      - ../out:/out          # results land here (host: Transcribe\out)
-      - ../archive:/archive  # processed sources moved here (host: Transcribe\archive)
-      - hf-cache:/root/.cache/huggingface   # models persist between runs
+  app:
+    <<: *common
+    ports:
+      - "7860:7860"
+    command: ["/work/app.py"]
+
+  bench:
+    <<: *common
+    profiles: ["bench"]
+    ports:
+      - "7861:7860"
+    command: ["/work/stagebench_app.py"]
 
 volumes:
-  hf-cache:
+  model-cache:
+    name: nemo-cache   # reuse the existing model cache (no 10GB re-download); created on fresh installs

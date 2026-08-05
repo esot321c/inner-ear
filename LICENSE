@@ -27,5 +27,6 @@ at runtime have their OWN licenses, which you accept by using them:
   - OpenAI Whisper (large-v3): MIT
   - NVIDIA NeMo Sortformer diarizer: NVIDIA model license - review it before any
     commercial redistribution.
-  - pyannote (older whisply path only): MIT code, gated model terms.
+  - DiCoW (diarization-conditioned Whisper, used for 3+ speakers): CC-BY-4.0.
+  - pyannote (optional research/bench backend only): MIT code, gated model terms.
 Your MIT code license does not override those model licenses.

@@ -24,8 +24,16 @@ scratch/
 
 # --- logs and build artifacts ---
 *.log
+logs/
 docker/nemo/audio.wav
 docker/nemo/out/
+
+# --- tooling caches / scratch ---
+.pytest_cache/
+.playwright-mcp/
+
+# --- local working docs (specs, plans, lab notebook) - kept on disk, not in the repo ---
+docs/
 
 # --- my throwaway scratch scripts ---
 _*.py
