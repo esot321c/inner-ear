@@ -5,6 +5,8 @@ All notable changes to Inner Ear are documented here. This project adheres to
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-05
+
 ### Added
 - **Every track is diarized.** Multi-track and stereo recordings no longer treat
   one track as "you" and diarize only the other. Each track is diarized on its
@@ -13,7 +15,7 @@ All notable changes to Inner Ear are documented here. This project adheres to
   labeled as one person. Speaker ids are namespaced per track (`t0:speaker_1`)
   so they stay unique once pooled, and you name every speaker found.
 - **Cross-track bleed suppression.** When each participant is on their own track,
-  every mic still faintly picks up the others — which the per-track diarizer
+  every mic still faintly picks up the others, which the per-track diarizer
   would otherwise report as an extra speaker. A pooling barrier now compares all
   tracks against each other and drops bleed in two passes: stage 1 removes a word
   only when all three signals agree (time overlap, ≥6 dB louder on another track,
@@ -24,9 +26,9 @@ All notable changes to Inner Ear are documented here. This project adheres to
 - **Clean solo naming clips.** Each speaker's sample clip is cut from a window
   where that speaker is talking alone on their own track (`pick_solo_windows`),
   instead of a slice that may contain crosstalk.
-- **Per-stage artifacts** written to `out/<name>/stages/` — channel detection,
-  raw and post-suppression per-track transcripts, pooled words, and final turns —
-  for diagnosing a bad run.
+- **Per-stage artifacts** written to `out/<name>/stages/` for diagnosing a bad
+  run: channel detection, raw and post-suppression per-track transcripts, pooled
+  words, and final turns.
 
 ### Changed
 - **The "Which channel is YOU?" controls are gone** from the UI, along with the
@@ -36,6 +38,12 @@ All notable changes to Inner Ear are documented here. This project adheres to
 - **LLM boundary cleanup is scoped to cascade words only.** DiCoW output is
   already per-speaker and the no-diarization fallback has no posterior to reason
   over, so both are left untouched.
+- **README and CONTRIBUTING rewritten.** The README described the retired
+  two-channel flow and advertised `YOU_NAME` / `YOU_CH`, which the code no longer
+  reads. It now documents what the pipeline actually does, states that Docker
+  Compose is the only run path, and drops the duplicated run instructions that
+  had accumulated across three sections. CONTRIBUTING lists the current
+  `pipeline.py` functions.
 
 ### Removed
 - **The last of the legacy whisply stack.** The 0.2.0 release retired the `.bat`
@@ -53,7 +61,7 @@ All notable changes to Inner Ear are documented here. This project adheres to
   boundary-aware, so an interjection inside another speaker's turn breaks the
   turn instead of being absorbed into it, while genuinely uninterrupted speech
   still merges.
-- **`rms_db` is bounds-safe past the end of a track's audio** — a window beyond
+- **`rms_db` is bounds-safe past the end of a track's audio.** A window beyond
   the samples returns "no evidence" rather than reading out of range, so tracks
   of unequal length can't produce a bad loudness comparison.
 
