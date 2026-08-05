@@ -15,104 +15,145 @@ Most "Whisper + diarization" setups use **pyannote**, which collapses similar-so
 - **Transcribes** with OpenAI Whisper `large-v3` (via faster-whisper) — accurate, captures fast/quiet speech.
 - **Skips silence** (voice-activity detection), so dead air isn't transcribed as filler or hallucinated text.
 - **Separates speakers** with NeMo streaming Sortformer — handles long files within 8 GB VRAM.
-- **Light jitter cleanup** snaps isolated mis-tagged words back to the right speaker, without flattening fast back-and-forth.
-- **Two-channel meetings** (your mic + the call) are auto-detected and split: your channel is labeled as you; the far side (which may have several people) is diarized.
-- **Naming UI** — plays a sample clip of each detected voice so you can name them.
+- **Boundary fixes** snap mis-timed back-channels ("yeah", "okay") and stranded turn-openers back to the right speaker — a measured 10→2 mistakes on a rapid two-person call.
+- **Auto-escalates to DiCoW** (Diarization-Conditioned Whisper) when **3+ speakers** are detected on a track: it decodes each speaker separately, so overlapping crosstalk is attributed inside the model. Measured to cut 3-speaker mistakes by ~63% vs the standard cascade. Two-speaker tracks stay on the fast path. Threshold via `DICOW_MIN_SPK`.
+- **Every track is diarized.** Multi-track and stereo recordings are split and each track is diarized on its own, so a track with several people on it is separated rather than lumped together. Speakers are pooled across tracks and you name all of them.
+- **Cross-track bleed suppression** — when you and the call are on separate tracks, each mic still faintly hears the other. Words that are a quieter duplicate of what another track heard louder are dropped, so bleed doesn't show up as a phantom extra speaker.
+- **Naming UI** — plays a clean solo clip of each detected voice so you can name them.
 - **Single** (interactive) and **batch** (whole-folder) modes.
 - Fully local. No cloud, no uploads.
 
 ## Requirements
 
+**Inner Ear runs in Docker — always.** There is no host-Python install path for the app: the GPU stack (CUDA, NeMo, faster-whisper, DiCoW) is pinned inside the image, and the only supported way to run it is Docker Compose. The one thing you can run on the host is the CPU unit-test suite (see [Development](#development)).
+
 - **NVIDIA GPU with ≥8 GB VRAM** (developed on an RTX 3070).
-- **Docker** with GPU support (NVIDIA Container Toolkit; on Windows, Docker Desktop + WSL2).
-- ~13 GB disk for the image, plus ~3–4 GB of models downloaded on first run (cached after).
-- The `.bat` launchers are Windows; on Linux/macOS run the equivalent `docker run` (see [Manual run](#manual-run)).
+- **Docker** with GPU support (NVIDIA Container Toolkit; on Windows, Docker Desktop + WSL2) and **Docker Compose**.
+- ~12 GB disk for the image, plus ~6–10 GB of models downloaded on first run (Whisper, Sortformer, and DiCoW for 3+ speakers), cached after in the `nemo-cache` volume.
 
-## Quick start (Windows)
+## Quick start
 
-1. Build/launch in one step — double-click **`Transcribe-App.bat`** (first run builds the image, ~20 min).
-2. Your browser opens to **http://localhost:7860**.
-3. Upload a meeting → **Transcribe** → play each voice, type names → **Save**.
-4. Transcript lands in `out/<name>/`, the source moves to `archive/`.
+```bash
+cd docker
+docker compose up
+```
+
+First run builds the image (~20 min) and downloads models. Then:
+
+1. Open **http://localhost:7860**.
+2. Upload a meeting → **Transcribe** → play each voice, type names → **Save**.
+3. Transcript lands in `out/<name>/`, the source moves to `archive/`.
+4. **Ctrl+C** to stop, then `docker compose down` to remove the container.
+
+That's the whole thing. `docker compose up` starts just the web app — the stage
+bench sits behind a profile, so it won't come up unless you ask for it.
 
 ## Usage
 
-**Single meeting:** set your name + which channel is you (for two-channel files), upload, transcribe, name the voices, save.
+**Single meeting:** upload, transcribe, name each voice it found, save. No channel setup — every track is diarized and every speaker is named the same way.
 
 **Batch:** drop files in `in/`, open the **Batch folder** tab, **Process all**, then pick each meeting to name and save.
 
-**Best capture (recommended):** OBS multi-track — **Mic → Track 1**, **Desktop audio → Track 2** (Settings → Output → Recording). Recorded as separate tracks in one MKV; the pipeline pulls each independently. A stereo file (you = left, call = right) also works. A single mixed track is diarized as-is.
+**Best capture (recommended):** OBS multi-track — **Mic → Track 1**, **Desktop audio → Track 2** (Settings → Output → Recording). Recorded as separate tracks in one MKV; the pipeline pulls each independently. A stereo file (mic left, call right) also works. A single mixed track is diarized as-is.
+
+## Running
+
+Everything runs through `docker/docker-compose.yml`. The image is defined in
+`docker/nemo/Dockerfile` with dependencies pinned in `requirements.lock.txt`, so
+the environment is reproducible.
+
+```bash
+cd docker
+
+docker compose up          # web app -> http://localhost:7860
+docker compose up -d       # same, in the background
+docker compose down        # stop and remove the container
+
+# experiment stage bench -> http://localhost:7861
+docker compose --profile bench up bench
+```
+
+Host paths `in/`, `out/`, and `archive/` are mounted into the container, and model
+weights persist in the `nemo-cache` volume so they download only once.
 
 ## Configuration
 
-Copy `.env.example` to `.env` (gitignored) for optional settings:
+Optional. Copy `.env.example` to `.env` (gitignored) if you want to change anything:
 
 ```bash
 cp .env.example .env      # Windows: copy .env.example .env
 ```
 
-- **The main app needs no configuration and no token** — Whisper and NeMo
-  Sortformer are open models.
-- `HF_TOKEN` in `.env` is **only** needed for the legacy pyannote launchers
-  (`Transcribe-Folder.bat` / `Transcribe-Docker.bat`). Get a free token at
+- **The main app needs no configuration and no token** — Whisper, NeMo
+  Sortformer, and DiCoW are all open models (DiCoW is CC-BY-4.0).
+- `WHISPER_MODEL` (default `large-v3`) — or `large-v3-turbo` for speed.
+- `DICOW_MIN_SPK` (default `3`) — auto-escalate to DiCoW at this many detected
+  speakers on a track. Set to a large number (e.g. `99`) to always use the fast
+  cascade.
+- `LLM_BASE_URL` / `LLM_MODEL` — optional OpenAI-compatible endpoint for an extra
+  boundary-cleanup pass on cascade words.
+- `HF_TOKEN` is **only** needed for the optional **pyannote** research backend
+  (used in the stage bench, not the main app). Get a free token at
   [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) and
   accept the terms for
   [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
   and [segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0).
-- Optional app settings: `WHISPER_MODEL`, `YOU_NAME`, `YOU_CH` (see `.env.example`).
 
 ## How it works
 
 ```
 audio file
-  ├─ channel detection (multi-track / stereo / mono)         pipeline.plan_channels
-  ├─ transcribe each channel        (Whisper large-v3)        pipeline.transcribe
-  ├─ diarize the mixed/far channel  (NeMo Sortformer)         pipeline.diarize
-  ├─ assign speaker per word + sentence-level smoothing        pipeline.smooth_sentences
-  ├─ merge channels chronologically, group into turns          pipeline.build_turns
-  └─ you name the speakers → render labeled transcript          pipeline.render
+  ├─ channel detection (multi-track / stereo / mono)          pipeline.plan_channels
+  │
+  ├─ FOR EACH TRACK (no track is special):
+  │    ├─ diarize (NeMo Sortformer) -> soft posterior         pipeline.diarize_soft
+  │    ├─ count speakers -> pick this track's engine          pipeline.count_speakers
+  │    │
+  │    ├─ ≤2 speakers — CASCADE (fast path)
+  │    │    ├─ transcribe (Whisper large-v3)                  pipeline.transcribe
+  │    │    ├─ attribute per word from the soft posterior     pipeline.resolve_speakers
+  │    │    └─ boundary fixes (transition-fix, onset-fix)     pipeline.fix_transition_leaks
+  │    │
+  │    └─ ≥3 speakers — DiCoW (diarization-conditioned Whisper)
+  │         └─ decode each speaker separately, conditioned    dicow_backend.transcribe_dicow
+  │            on the Sortformer diarization → overlap in-model
+  │
+  ├─ BARRIER: all tracks transcribed
+  │    └─ drop cross-track bleed (quieter duplicate of a      pipeline.suppress_cross_track_bleed
+  │       word another track heard louder)
+  │
+  └─ namespace speaker ids per track, pool, group into        pipeline.namespace_speakers
+     turns, cut a solo clip per speaker, you name them        pipeline.build_turns_overlap
 ```
 
-Models load sequentially (transcribe → free VRAM → diarize) to fit 8 GB.
+Models load sequentially (diarize → free VRAM → transcribe/DiCoW) to fit 8 GB.
+Per-stage artifacts are written to `out/<name>/stages/` for diagnostics.
 
 ## Project layout
 
 | Path | What |
 |------|------|
-| `docker/nemo/pipeline.py` | Shared engine (pure helpers + model helpers) |
-| `docker/nemo/app.py` | Gradio web app |
-| `docker/nemo/diarize_transcribe.py` | Batch CLI (same engine) |
-| `docker/nemo/Dockerfile` | CUDA + NeMo + Whisper + Gradio image |
+| `docker/nemo/pipeline.py` | Shared engine (transcribe, diarize, attribute, fixes, bleed suppression) |
+| `docker/nemo/app.py` | Gradio web app — per-track diarize, cascade/DiCoW branch, pooling |
+| `docker/nemo/dicow_backend.py` | DiCoW (diarization-conditioned Whisper) for 3+ speakers |
+| `docker/nemo/pyannote_backend.py` | pyannote backend (research/bench only) |
+| `docker/nemo/scoring.py` | Word-level speaker-accuracy scorer (boundary mistakes) |
+| `docker/nemo/stagebench_app.py` | Experiment bench: run stages, label truth, score runs |
+| `docker/nemo/Dockerfile` + `requirements.lock.txt` | Reproducible image (pinned) |
+| `docker/docker-compose.yml` | `app` (production) + `bench` services |
 | `docker/nemo/tests/` | Unit tests (run on CPU, no GPU) |
-| `Transcribe-App.bat` | Launch the web app |
-| `Transcribe-Diarize.bat` | Batch folder, no UI |
-| `docs/` | Design spec + implementation plan |
-
-## Manual run
-
-```bash
-# build
-docker build -t nemo-sortformer docker/nemo
-
-# web app
-docker run --rm --gpus all -p 7860:7860 \
-  -v "$PWD/in:/in" -v "$PWD/out:/out" -v "$PWD/archive:/archive" \
-  -v nemo-cache:/root/.cache \
-  --entrypoint python3 nemo-sortformer /work/app.py
-
-# batch (no UI)
-docker run --rm --gpus all \
-  -v "$PWD/in:/in" -v "$PWD/out:/out" -v "$PWD/archive:/archive" \
-  -v nemo-cache:/root/.cache nemo-sortformer
-```
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Unit tests run on CPU without the models:
+See [CONTRIBUTING.md](CONTRIBUTING.md). Pure logic lives in `pipeline.py` as
+stdlib-only functions, so the unit tests run on the host with plain Python — no
+GPU, no Docker, no models:
 
 ```bash
 python -m pytest docker/nemo/tests -v
 ```
+
+Anything that touches a model or the GPU runs in the container.
 
 ## License & models
 

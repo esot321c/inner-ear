@@ -1,7 +1,0 @@
-{
-  "device": "gpu",
-  "model": "large-v3-turbo",
-  "annotate": true,
-  "language": null,
-  "num_speakers": null
-}
